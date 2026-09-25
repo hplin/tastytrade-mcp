@@ -30,12 +30,18 @@ class MemoryKeyring(KeyringBackend):
 
 
 @pytest.fixture(autouse=True)
-def memory_keyring(request):
+def memory_keyring(request, monkeypatch):
     # Live integration tests must use the real OS keyring (stored credentials),
     # so skip the in-memory swap for anything marked @pytest.mark.live.
     if request.node.get_closest_marker("live"):
         yield None
         return
+    for name in (
+        "TASTYTRADE_CLIENT_SECRET",
+        "TASTYTRADE_REFRESH_TOKEN",
+        "TASTYTRADE_ACCOUNT_NUMBER",
+    ):
+        monkeypatch.delenv(name, raising=False)
     backend = MemoryKeyring()
     previous = keyring.get_keyring()
     keyring.set_keyring(backend)
@@ -61,6 +67,10 @@ def make_config():
             rate_limit="120/minute",
             http_host="127.0.0.1",
             http_port=7698,
+            require_azure_auth=False,
+            public_host=None,
+            entra_tenant_id=None,
+            mcp_api_app_id=None,
         )
         base.update(overrides)
         return Config(**base)

@@ -10,6 +10,18 @@ def test_set_get_roundtrip():
     assert credentials.get_secret(credentials.CLIENT_SECRET) == "abc"
 
 
+def test_managed_environment_secret_takes_precedence(monkeypatch):
+    credentials.set_secret(credentials.CLIENT_SECRET, "keyring-value")
+    monkeypatch.setenv("TASTYTRADE_CLIENT_SECRET", "managed-value")
+    assert credentials.get_secret(credentials.CLIENT_SECRET) == "managed-value"
+
+
+def test_empty_environment_secret_falls_back_to_keyring(monkeypatch):
+    credentials.set_secret(credentials.REFRESH_TOKEN, "keyring-value")
+    monkeypatch.setenv("TASTYTRADE_REFRESH_TOKEN", "")
+    assert credentials.get_secret(credentials.REFRESH_TOKEN) == "keyring-value"
+
+
 def test_secrets_present_and_missing():
     assert not credentials.secrets_present()
     assert set(credentials.missing_secrets()) == {

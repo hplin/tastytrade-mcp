@@ -1,0 +1,15 @@
+.git
+.github
+.coverage
+.env
+.env.*
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.py[cod]
+build
+dist
+tests
+tastytrade-mcp.code-workspace

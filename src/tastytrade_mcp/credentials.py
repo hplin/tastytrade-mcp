@@ -1,16 +1,22 @@
-"""Keyring-backed credential storage.
+"""Credential storage for local and managed-container runtimes.
 
-Secrets are stored in the OS keyring:
+Local secrets are stored in the OS keyring:
   - Windows  → Credential Manager (DPAPI-backed)
   - macOS    → Keychain
   - Linux    → SecretStorage (GNOME Keyring / KWallet)
   - Headless → encrypted file via ``keyrings.alt`` (install with the
                ``[headless]`` extra: ``pip install tastytrade-mcp[headless]``)
 
-Nothing is ever written to disk in plaintext, and secrets are never logged.
+Managed container platforms may inject the explicitly supported environment
+variables from their secret store. They take precedence over the local keyring.
+Do not put those variables in ``.env`` or commit their values.
+
+Secrets are never logged.
 """
 
 from __future__ import annotations
+
+import os
 
 import keyring
 import keyring.backend
@@ -27,6 +33,12 @@ ACCOUNT_NUMBER = "account_number"
 REQUIRED_SECRETS = (CLIENT_SECRET, REFRESH_TOKEN)
 ALL_SECRETS = (CLIENT_SECRET, REFRESH_TOKEN, ACCOUNT_NUMBER)
 
+_ENV_SECRET_NAMES = {
+    CLIENT_SECRET: "TASTYTRADE_CLIENT_SECRET",
+    REFRESH_TOKEN: "TASTYTRADE_REFRESH_TOKEN",
+    ACCOUNT_NUMBER: "TASTYTRADE_ACCOUNT_NUMBER",
+}
+
 # Keyring username prefix — kept for backward compatibility with existing entries.
 _PREFIX = "production"
 
@@ -37,6 +49,14 @@ class CredentialError(RuntimeError):
 
 def _entry(key: str) -> str:
     return f"{_PREFIX}:{key}"
+
+
+def _environment_secret(key: str) -> str | None:
+    name = _ENV_SECRET_NAMES.get(key)
+    if name is None:
+        return None
+    value = os.getenv(name)
+    return value if value else None
 
 
 def _no_keyring_hint() -> str:
@@ -61,7 +81,10 @@ def get_backend_name() -> str:
 
 
 def get_secret(key: str) -> str | None:
-    """Fetch a secret from the keyring, or ``None`` if not set."""
+    """Fetch a managed environment secret, then fall back to the keyring."""
+    environment_value = _environment_secret(key)
+    if environment_value is not None:
+        return environment_value
     try:
         return keyring.get_password(SERVICE_NAME, _entry(key))
     except keyring.errors.NoKeyringError as exc:
