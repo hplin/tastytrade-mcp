@@ -11,6 +11,8 @@ The target Container App must already have:
 - Azure Container Apps authentication (Easy Auth) enabled;
 - `TASTYTRADE_CLIENT_SECRET` and `TASTYTRADE_REFRESH_TOKEN` populated through
   Container Apps secret references, not literal values;
+- optional `TASTYTRADE_ACCOUNT_NUMBER` populated through a secret reference
+  when the deployment must target a specific default account;
 - `MCP_PUBLIC_HOST`, `ENTRA_TENANT_ID`, and `MCP_API_APP_ID`;
 - registry pull access to the target Azure Container Registry.
 
@@ -52,3 +54,9 @@ AZURE_BUILD_MODE=local ./deploy/azure/deploy.sh
 ```
 
 The script never reads or prints secret values.
+
+The container uses managed environment secrets as its credential backend. A
+desktop keyring is not required. Startup logs and `get_connection_status`
+report credential-backend readiness without exposing secret values; missing
+required environment secrets surface `KEYRING_BACKEND_UNAVAILABLE` when no
+headless keyring is available.

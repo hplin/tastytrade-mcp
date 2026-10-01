@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from . import credentials
 from .config import Config, get_config
 from .logging_utils import configure_logging
 from .session import close_session
@@ -70,6 +71,22 @@ def run(transport: str = "stdio", config: Config | None = None) -> None:
         "Starting tastytrade-mcp (transport=%s, live_trading=%s)",
         transport,
         config.enable_live_trading,
+    )
+    credential_health = credentials.credential_store_health()
+    log = (
+        logger.info
+        if credential_health["status"] == "ready"
+        else logger.warning
+    )
+    log(
+        "Credential store status=%s broker_auth_usable=%s "
+        "keyring_backend=%s keyring_available=%s code=%s",
+        credential_health["status"],
+        credential_health["broker_auth_usable"],
+        credential_health["keyring_backend"],
+        credential_health["keyring_available"],
+        credential_health.get("error_code")
+        or credential_health.get("warning_code"),
     )
 
     mcp = build_server(config)

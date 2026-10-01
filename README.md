@@ -68,6 +68,18 @@ managed secret references:
 They take precedence over the local keyring. Do not place them in `.env`, Docker
 build arguments, image layers, deployment scripts, or source control.
 
+Managed containers do not require a keyring when the two required environment
+secrets are present. If the optional account number is not configured and no
+keyring is available, account-scoped tools fall back to the first account
+returned by Tastytrade instead of failing credential retrieval. Set
+`TASTYTRADE_ACCOUNT_NUMBER` through the platform secret store when a specific
+default account is required.
+
+`get_connection_status` reports a secret-free `credential_store` health object.
+An unusable headless backend returns the machine-readable code
+`KEYRING_BACKEND_UNAVAILABLE`. A managed runtime with both required environment
+credentials uses `managed_environment` mode and does not access a keyring.
+
 ## 3. Configure
 
 Copy `.env.example` to `.env` and adjust. Key flags:
@@ -96,6 +108,9 @@ HTTP transport also exposes public `/healthz` and `/ping` endpoints. When Azure
 auth is configured, it publishes
 `/.well-known/oauth-protected-resource` and rejects unauthenticated `/mcp`
 requests with HTTP 401.
+
+At startup, the server validates credential-store health and logs only the
+backend name, readiness state, and error code. Secret values are never logged.
 
 ### Docker
 
