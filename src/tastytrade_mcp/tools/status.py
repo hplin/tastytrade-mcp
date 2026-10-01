@@ -23,14 +23,23 @@ def register(mcp, config: Config) -> None:
         Returns whether credentials are present, whether live trading is
         enabled, and how many accounts the session can see.
         """
+        credential_store = credentials.credential_store_health()
         status: dict[str, Any] = {
-            "ok": True,
+            "ok": credential_store["broker_auth_usable"],
             "live_trading_enabled": config.enable_live_trading,
-            "credentials_present": credentials.secrets_present(),
+            "credentials_present": credential_store[
+                "required_credentials_present"
+            ],
+            "credential_store": credential_store,
         }
-        if not status["credentials_present"]:
-            status["ok"] = False
-            status["hint"] = "Run `tastytrade-mcp secrets set` to store credentials."
+        if not credential_store["broker_auth_usable"]:
+            status["connected"] = False
+            status["code"] = credential_store["error_code"]
+            status["hint"] = (
+                "Configure managed TASTYTRADE_CLIENT_SECRET and "
+                "TASTYTRADE_REFRESH_TOKEN secrets, or run "
+                "`tastytrade-mcp secrets set` with a working keyring."
+            )
             return status
         try:
             session = get_session(config)

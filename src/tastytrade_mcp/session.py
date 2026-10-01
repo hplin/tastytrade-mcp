@@ -18,7 +18,7 @@ from .config import Config, get_config
 logger = logging.getLogger(__name__)
 
 
-class CredentialsMissingError(RuntimeError):
+class CredentialsMissingError(credentials.CredentialError):
     """Raised when required OAuth secrets are not present in the keyring."""
 
 
@@ -27,11 +27,14 @@ _session: Session | None = None
 
 
 def _build_session() -> Session:
-    missing = credentials.missing_secrets()
-    if missing:
+    health = credentials.credential_store_health()
+    missing = health["missing_required"]
+    if not health["broker_auth_usable"]:
         raise CredentialsMissingError(
             f"Missing credentials: {', '.join(missing)}. "
-            "Run `tastytrade-mcp secrets set` to store them."
+            "Use managed secret environment variables or run "
+            "`tastytrade-mcp secrets set` to store them.",
+            code=health.get("error_code", credentials.CREDENTIALS_MISSING),
         )
     client_secret = credentials.get_secret(credentials.CLIENT_SECRET)
     refresh_token = credentials.get_secret(credentials.REFRESH_TOKEN)

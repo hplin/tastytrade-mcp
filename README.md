@@ -6,8 +6,9 @@ inspect accounts/positions/orders, and (optionally) place and manage trades.
 
 - **OAuth2** authentication via the official [`tastytrade`](https://github.com/tastyware/tastytrade)
   Python SDK (session tokens auto-refresh; refresh tokens are long-lived).
-- **Credentials stored in the OS keyring** (Windows Credential Manager / DPAPI,
-  macOS Keychain, Linux Secret Service) — never in files, never in env vars, never logged.
+- **Credentials stored in the OS keyring** for local use. Managed containers may
+  inject the explicitly supported secret environment variables from their
+  platform secret store. Secrets are never loaded from `.env` or logged.
 - **Live trading is gated** behind `ENABLE_LIVE_TRADING` — disabled by default so
   an agent cannot place real orders without an explicit opt-in.
 - **stdio** transport by default; optional **HTTP** transport hardened with CORS
@@ -40,7 +41,7 @@ You'll be prompted (hidden input) for the client secret, refresh token, and an
 optional default account number. `secrets status` also shows which keyring backend
 is active — useful for diagnosing credential issues on a new machine.
 
-### Headless Linux (servers, Docker, CI)
+### Headless Linux with a persistent home directory
 
 Desktop Linux uses GNOME Keyring or KWallet. On headless systems (no desktop
 daemon) the native backend is unavailable. Install the encrypted-file fallback:
@@ -55,6 +56,30 @@ tastytrade-mcp secrets set
 encrypted with a master password you set on first use. Keep this file out of
 version control. `PYTHON_KEYRING_BACKEND` selects the backend only; it is not a secret.
 
+### Managed containers
+
+Azure Container Apps and similar platforms can inject these variables from
+managed secret references:
+
+- `TASTYTRADE_CLIENT_SECRET`
+- `TASTYTRADE_REFRESH_TOKEN`
+- `TASTYTRADE_ACCOUNT_NUMBER` (optional)
+
+They take precedence over the local keyring. Do not place them in `.env`, Docker
+build arguments, image layers, deployment scripts, or source control.
+
+Managed containers do not require a keyring when the two required environment
+secrets are present. If the optional account number is not configured and no
+keyring is available, account-scoped tools fall back to the first account
+returned by Tastytrade instead of failing credential retrieval. Set
+`TASTYTRADE_ACCOUNT_NUMBER` through the platform secret store when a specific
+default account is required.
+
+`get_connection_status` reports a secret-free `credential_store` health object.
+An unusable headless backend returns the machine-readable code
+`KEYRING_BACKEND_UNAVAILABLE`. A managed runtime with both required environment
+credentials uses `managed_environment` mode and does not access a keyring.
+
 ## 3. Configure
 
 Copy `.env.example` to `.env` and adjust. Key flags:
@@ -68,6 +93,9 @@ Copy `.env.example` to `.env` and adjust. Key flags:
 | `MCP_CORS_ORIGIN` | `http://localhost:3333` | Allowed CORS origin (HTTP transport) |
 | `MCP_RATE_LIMIT` | `120/minute` | Per-IP rate limit (HTTP transport) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `127.0.0.1` / `7698` | HTTP bind address |
+| `MCP_REQUIRE_AZURE_AUTH` | `false` | Require Azure Easy Auth's injected principal header on `/mcp` |
+| `MCP_PUBLIC_HOST` | unset | Public hostname used in OAuth protected-resource metadata |
+| `ENTRA_TENANT_ID` / `MCP_API_APP_ID` | unset | Entra tenant and API registration used by Azure auth metadata |
 
 ## 4. Run
 
@@ -75,6 +103,41 @@ Copy `.env.example` to `.env` and adjust. Key flags:
 tastytrade-mcp                    # stdio (default)
 tastytrade-mcp --transport http   # HTTP, CORS + rate limited
 ```
+
+HTTP transport also exposes public `/healthz` and `/ping` endpoints. When Azure
+auth is configured, it publishes
+`/.well-known/oauth-protected-resource` and rejects unauthenticated `/mcp`
+requests with HTTP 401.
+
+At startup, the server validates credential-store health and logs only the
+backend name, readiness state, and error code. Secret values are never logged.
+
+### Docker
+
+Build and smoke-test the image without credentials:
+
+```bash
+docker build -t tastytrade-mcp .
+docker run --rm -p 8000:8000 tastytrade-mcp
+curl http://127.0.0.1:8000/healthz
+```
+
+The image starts HTTP transport on `0.0.0.0:8000`, keeps live trading disabled,
+and forces dry-run mode. Inject Tastytrade credentials only through the runtime
+platform's secret mechanism.
+
+### Azure Container Apps
+
+The deployment helper upgrades an existing authenticated Container App, builds
+the image in Azure Container Registry, and verifies health, OAuth metadata, and
+the unauthenticated MCP boundary:
+
+```bash
+./deploy/azure/deploy.sh
+```
+
+See [`deploy/azure/README.md`](deploy/azure/README.md) for prerequisites and
+resource-name overrides.
 
 ### Connect an agent (stdio)
 
@@ -249,6 +312,8 @@ figures (`account_deployed_current`, `account_deployed_after`,
   secrets are never logged.
 - **HTTP transport** restricts CORS to a single configured origin and rate-limits
   to 120 requests/minute per IP (HTTP 429 when exceeded).
+- **Azure HTTP deployments** can require Easy Auth on `/mcp` while leaving only
+  health and OAuth metadata endpoints public.
 
 ## Development
 

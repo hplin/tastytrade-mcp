@@ -4,15 +4,43 @@ from __future__ import annotations
 
 import logging
 import signal
+from urllib.parse import urlparse
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
+from . import credentials
 from .config import Config, get_config
 from .logging_utils import configure_logging
 from .session import close_session
 from .tools import register_all
 
 logger = logging.getLogger(__name__)
+
+
+def _transport_security(config: Config) -> TransportSecuritySettings:
+    allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    allowed_origins = [
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://[::1]:*",
+        config.cors_origin,
+    ]
+
+    if config.public_host:
+        value = config.public_host.strip().rstrip("/")
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+        if parsed.hostname:
+            allowed_hosts.extend([parsed.hostname, f"{parsed.hostname}:*"])
+            allowed_origins.append(
+                f"{parsed.scheme or 'https'}://{parsed.netloc}"
+            )
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=list(dict.fromkeys(allowed_hosts)),
+        allowed_origins=list(dict.fromkeys(allowed_origins)),
+    )
 
 
 def build_server(config: Config | None = None) -> FastMCP:
@@ -27,6 +55,9 @@ def build_server(config: Config | None = None) -> FastMCP:
             "used when none is supplied. Order-placing tools are only present "
             "when the server was started with live trading enabled."
         ),
+        host=config.http_host,
+        port=config.http_port,
+        transport_security=_transport_security(config),
     )
     register_all(mcp, config)
     return mcp
@@ -40,6 +71,22 @@ def run(transport: str = "stdio", config: Config | None = None) -> None:
         "Starting tastytrade-mcp (transport=%s, live_trading=%s)",
         transport,
         config.enable_live_trading,
+    )
+    credential_health = credentials.credential_store_health()
+    log = (
+        logger.info
+        if credential_health["status"] == "ready"
+        else logger.warning
+    )
+    log(
+        "Credential store status=%s broker_auth_usable=%s "
+        "keyring_backend=%s keyring_available=%s code=%s",
+        credential_health["status"],
+        credential_health["broker_auth_usable"],
+        credential_health["keyring_backend"],
+        credential_health["keyring_available"],
+        credential_health.get("error_code")
+        or credential_health.get("warning_code"),
     )
 
     mcp = build_server(config)

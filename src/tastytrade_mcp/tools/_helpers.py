@@ -34,7 +34,9 @@ async def get_account(config: Config, account_number: str | None = None) -> Acco
     account on the session.
     """
     session = get_session(config)
-    number = account_number or credentials.get_secret(credentials.ACCOUNT_NUMBER)
+    number = account_number or credentials.get_optional_secret(
+        credentials.ACCOUNT_NUMBER
+    )
     if number:
         return await Account.get(session, number)
     accounts = await Account.get(session)
@@ -78,6 +80,9 @@ def error_payload(exc: Exception) -> dict[str, Any]:
     retryable = any(f" {code} " in str(exc) or str(exc).endswith(str(code))
                     for code in (500, 502, 503, 504))
     result: dict[str, Any] = {"ok": False, "error": msg}
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code:
+        result["code"] = code
     if retryable:
         result["retryable"] = True
     return result

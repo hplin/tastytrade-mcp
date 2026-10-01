@@ -14,7 +14,7 @@ keywords = ["tastytrade", "mcp", "trading", "options", "oauth2", "agent"]
 
 dependencies = [
     "tastytrade>=12",
-    "mcp>=1.2",
+    "mcp>=1.2,<2",
     "keyring>=24",
     "rich>=13",
     "pydantic>=2",
